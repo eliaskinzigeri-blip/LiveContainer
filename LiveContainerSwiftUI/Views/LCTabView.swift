@@ -153,7 +153,42 @@ struct LCTabView: View {
     // - SideStore can hand over a task (install, launch, Home Screen icon) through "SCPendingDeepLink".
     // - "SCStayInUI" is set by SideStore's escape button to show LiveContainer's own interface once.
     // - Otherwise, when the app was opened normally (no URL, no error to show), switch to SideStore.
+    // SideStore shell: LiveContainer signs the apps it runs with SideStore's certificate.
+    // Pick it up automatically (same keychain item as "Import Certificate from SideStore"),
+    // also when SideStore got a new certificate since last time.
+    func scSyncSideStoreCertificate() {
+        guard UserDefaults.sideStoreExist() else { return }
+        
+        func readKeychain(_ account: String) -> Data? {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrAccount as String: account,
+                kSecReturnData as String: true,
+                kSecMatchLimit as String: kSecMatchLimitOne,
+                kSecAttrService as String: "com.kdt.livecontainer",
+                kSecAttrSynchronizable as String: kSecAttrSynchronizableAny
+            ]
+            var item: CFTypeRef?
+            guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
+            return item as? Data
+        }
+        
+        guard let certificateData = readKeychain("signingCertificate") else { return }
+        
+        let groupDefaults = LCUtils.appGroupUserDefault
+        if groupDefaults.data(forKey: "LCCertificateData") == certificateData,
+           groupDefaults.object(forKey: "LCCertificatePassword") != nil {
+            return
+        }
+        
+        let password = readKeychain("signingCertificatePassword").flatMap { String(data: $0, encoding: .utf8) } ?? ""
+        groupDefaults.set(certificateData, forKey: "LCCertificateData")
+        groupDefaults.set(password, forKey: "LCCertificatePassword")
+        groupDefaults.set(NSDate.now, forKey: "LCCertificateUpdateDate")
+    }
+
     func scHandleStartup() {
+        scSyncSideStoreCertificate()
         let defaults = UserDefaults.standard
         if let pending = defaults.string(forKey: "SCPendingDeepLink") {
             defaults.removeObject(forKey: "SCPendingDeepLink")
