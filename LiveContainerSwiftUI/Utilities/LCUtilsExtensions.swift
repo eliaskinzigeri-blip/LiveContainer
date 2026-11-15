@@ -520,7 +520,8 @@ extension LCUtils {
         let sideStoreApp = LCAppModel(appInfo: BuiltInSideStoreAppInfo.shared, delegate: delegate)
         
         Task {
-            try await sideStoreApp.runApp(bundleIdOverride: "builtinSideStore", urlStr: urlStr)
+            // SideStore shell: SideStore always takes over the whole app, never a multitask window
+            try await sideStoreApp.runApp(multitask: false, bundleIdOverride: "builtinSideStore", urlStr: urlStr)
         }
     }
 }

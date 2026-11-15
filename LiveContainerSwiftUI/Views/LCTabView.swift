@@ -127,6 +127,11 @@ struct LCTabView: View {
                 Color.black.ignoresSafeArea()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SCMultitaskAppStarted"))) { _ in
+            // the app runs in a window of this interface: nothing left to hide
+            scStayInUI = true
+            scCover = false
+        }
     }
     
     func dispatchURL(url: URL) {
@@ -198,7 +203,22 @@ struct LCTabView: View {
         groupDefaults.set(NSDate.now, forKey: "LCCertificateUpdateDate")
     }
 
+    // SideStore shell: by default, apps run inside this app without restarting it (multitask mode),
+    // full screen, with the window bar and the dock out of sight. Applied once; every setting can
+    // still be changed afterwards in LiveContainer's settings.
+    func scApplyImmersiveDefaults() {
+        guard UserDefaults.sideStoreExist() else { return }
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: "SCImmersiveDefaultsApplied") else { return }
+        defaults.set(true, forKey: "SCImmersiveDefaultsApplied")
+        defaults.set(true, forKey: "LCLaunchInMultitaskMode")
+        defaults.set(true, forKey: "LCLaunchMultitaskMaximized")
+        LCUtils.appGroupUserDefault.set(true, forKey: "LCHideCollapsedDock")
+        LCUtils.appGroupUserDefault.set(true, forKey: "LCMaxOneAppOnStage")
+    }
+
     func scHandleStartup() {
+        scApplyImmersiveDefaults()
         scSyncSideStoreCertificate()
         if crashReportShow || errorShow {
             scCover = false

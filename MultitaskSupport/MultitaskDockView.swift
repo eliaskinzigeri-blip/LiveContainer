@@ -713,7 +713,36 @@ class AppInfoProvider {
             } else if self.isVisible {
                 self.updateDockFrame()
             }
+            
+            if Self.scImmersiveEnabled {
+                self.scEnterImmersive()
+            }
+            NotificationCenter.default.post(name: Notification.Name("SCMultitaskAppStarted"), object: nil)
         }
+    }
+    
+    // SideStore shell: apps opened from a Home Screen icon should look like regular apps,
+    // so the window bar and the dock are put away as soon as an app starts.
+    static var scImmersiveEnabled: Bool {
+        guard UserDefaults.sideStoreExist() else { return false }
+        return (UserDefaults.standard.object(forKey: "SCImmersive") as? Bool) ?? true
+    }
+    
+    func scEnterImmersive() {
+        self.isCollapsed = true
+        self.isDockHidden = true
+        self.updateDockFrame()
+        // hides the window bar of maximized apps
+        self.notifyDockCollapseChanged()
+        
+        // Way back: swipe in from the right edge to bring the dock (and the window bar) back.
+        // The left edge is left alone so the "back" swipe of the running app keeps working.
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let keyWindow = windowScene.windows.first else { return }
+        keyWindow.gestureRecognizers?.removeAll { $0 is UIScreenEdgePanGestureRecognizer }
+        let rightEdgeGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgeSwipe(_:)))
+        rightEdgeGesture.edges = .right
+        keyWindow.addGestureRecognizer(rightEdgeGesture)
     }
     
     @objc public func minimizeAllWindows(except: DecoratedAppSceneViewController? = nil) {
