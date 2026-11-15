@@ -84,6 +84,8 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
     @State private var isViewAppeared = false
     // SideStore shell: an install handed over by the built-in SideStore replaces the existing copy without asking
     @State private var scAutoReplace = false
+    // SideStore shell: go back to SideStore once the Home Screen profile sheet is closed
+    @State private var scReturnAfterSafari = false
     
     @ObservedObject var searchContext: SearchContext = SearchContext()
     var sortedApps: [LCAppModel] {
@@ -388,7 +390,14 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                 await installFromPlist(urlStr: urlStr)
             })
         }
-        .fullScreenCover(isPresented: $safariViewOpened) {
+        .fullScreenCover(isPresented: $safariViewOpened, onDismiss: {
+            if scReturnAfterSafari {
+                scReturnAfterSafari = false
+                if UserDefaults.sideStoreExist() {
+                    LCUtils.openSideStore(delegate: self)
+                }
+            }
+        }) {
             SafariView(url: $safariViewURL)
         }
         .sheet(isPresented: $helpPresent) {
@@ -1186,6 +1195,7 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             errorShow = true
             return
         }
+        scReturnAfterSafari = true
         installMdm(data: data)
     }
 
