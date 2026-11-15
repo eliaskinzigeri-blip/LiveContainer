@@ -98,8 +98,19 @@ void LCShowSwitchAppConfirmation(NSURL *url, NSString* bundleId, bool isSharedAp
     }
     
     // if LCSwitchAppWithoutAsking is enabled we directly open the app in current lc
-    // SideStore shell: a Home Screen icon tapped while SideStore is in front opens its app directly
-    if ([NSUserDefaults.lcUserDefaults boolForKey:@"LCSwitchAppWithoutAsking"] || NSUserDefaults.isSideStore) {
+    // SideStore shell: a Home Screen icon tapped while another app is in front goes through
+    // LiveContainer's launcher (behind its plain screen), never straight to the app: the launcher is
+    // what patches and signs the app and its tweaks, including tweaks updated since the last launch.
+    if (NSUserDefaults.sideStoreExist) {
+        [NSUserDefaults.lcUserDefaults removeObjectForKey:@"selected"];
+        [NSUserDefaults.lcUserDefaults removeObjectForKey:@"selectedContainer"];
+        [NSUserDefaults.lcUserDefaults setBool:NO forKey:@"LCOpenSideStore"];
+        [NSUserDefaults.lcUserDefaults setObject:url.absoluteString forKey:@"SCPendingDeepLink"];
+        [NSUserDefaults.lcUserDefaults synchronize];
+        [NSClassFromString(@"LCSharedUtils") launchToGuestAppWithClassicMode:0];
+        return;
+    }
+    if ([NSUserDefaults.lcUserDefaults boolForKey:@"LCSwitchAppWithoutAsking"]) {
         [NSClassFromString(@"LCSharedUtils") launchToGuestAppWithURL:url];
         return;
     }
