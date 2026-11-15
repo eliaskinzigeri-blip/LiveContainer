@@ -18,6 +18,9 @@ struct LCTabView: View {
     @State var shouldToggleMainWindowOpen = false
     // SideStore shell: true once this launch has something to do in LiveContainer's own interface
     @State var scStayInUI = false
+    // SideStore shell: plain screen shown while this interface is only a stop on the way to an app
+    // (Home Screen icon, OPEN in SideStore) or to SideStore itself, so the app list never flashes by.
+    @State var scCover = UserDefaults.sideStoreExist()
     @Environment(\.scenePhase) var scenePhase
     @StateObject var downloadHelper = DownloadHelper()
 
@@ -114,7 +117,15 @@ struct LCTabView: View {
         }
         .onOpenURL { url in
             scStayInUI = true
+            if url.host?.lowercased() != "livecontainer-launch" {
+                scCover = false
+            }
             dispatchURL(url: url)
+        }
+        .overlay {
+            if scCover {
+                Color.black.ignoresSafeArea()
+            }
         }
     }
     
@@ -189,11 +200,17 @@ struct LCTabView: View {
 
     func scHandleStartup() {
         scSyncSideStoreCertificate()
+        if crashReportShow || errorShow {
+            scCover = false
+        }
         let defaults = UserDefaults.standard
         if let pending = defaults.string(forKey: "SCPendingDeepLink") {
             defaults.removeObject(forKey: "SCPendingDeepLink")
             if let url = URL(string: pending) {
                 scStayInUI = true
+                if url.host?.lowercased() != "livecontainer-launch" {
+                    scCover = false
+                }
                 dispatchURL(url: url)
                 return
             }
@@ -201,14 +218,32 @@ struct LCTabView: View {
         if defaults.bool(forKey: "SCStayInUI") {
             defaults.removeObject(forKey: "SCStayInUI")
             scStayInUI = true
+            scCover = false
             return
         }
-        guard UserDefaults.sideStoreExist(), !defaults.bool(forKey: "SCDisableAutoSideStore") else { return }
+        guard UserDefaults.sideStoreExist(), !defaults.bool(forKey: "SCDisableAutoSideStore") else {
+            scCover = false
+            return
+        }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 600_000_000)
-            guard !scStayInUI, !crashReportShow, !errorShow,
-                  UIApplication.shared.applicationState == .active else { return }
+            if crashReportShow || errorShow {
+                // there is something to read here
+                scCover = false
+                return
+            }
+            // an app is being launched from its Home Screen icon: keep the plain screen until it opens
+            guard !scStayInUI else { return }
+            guard UIApplication.shared.applicationState == .active else {
+                scCover = false
+                return
+            }
             LCUtils.openSideStore()
+        }
+        // Never leave the interface hidden if the hand-over did not happen (e.g. the app failed to launch).
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 6_000_000_000)
+            scCover = false
         }
     }
 
