@@ -169,7 +169,8 @@ struct LCTabView: View {
             return
         }
         guard UserDefaults.sideStoreExist(), !defaults.bool(forKey: "SCDisableAutoSideStore") else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
             guard !scStayInUI, !crashReportShow, !errorShow,
                   UIApplication.shared.applicationState == .active else { return }
             LCUtils.openSideStore()

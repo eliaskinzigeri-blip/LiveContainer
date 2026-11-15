@@ -1164,7 +1164,8 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
             try? FileManager.default.removeItem(at: fileUrl)
         }
         guard UserDefaults.sideStoreExist() else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
             LCUtils.openSideStore(delegate: self)
         }
     }
