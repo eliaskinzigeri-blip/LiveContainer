@@ -332,6 +332,13 @@ class LCAppModel: ObservableObject, Hashable {
                 isAppRunning = false
             }}
         }
+        // SideStore shell: an app copied in directly by SideStore gets LiveContainer's usual
+        // defaults for a new install the first time it is launched.
+        if let info = appInfo.info(), info["SCDirectInstall"] != nil {
+            info.removeObject(forKey: "SCDirectInstall")
+            appInfo.installationDate = Date.now
+            appInfo.spoofSDKVersion = true
+        }
         try await signApp(force: false)
         
         if let bundleIdOverride {
