@@ -16,6 +16,8 @@ struct LCTabView: View {
     @EnvironmentObject var sharedModel : SharedModel
     @EnvironmentObject var sceneDelegate: SceneDelegate
     @State var shouldToggleMainWindowOpen = false
+    // SideStore shell: true once this launch has something to do in LiveContainer's own interface
+    @State var scStayInUI = false
     @Environment(\.scenePhase) var scenePhase
     @StateObject var downloadHelper = DownloadHelper()
 
@@ -101,6 +103,7 @@ struct LCTabView: View {
             checkAndSaveBundleId()
             checkGetTaskAllow()
             checkPrivateContainerBookmark()
+            scHandleStartup()
         }
         .onReceive(pub) { out in
             if let scene1 = sceneDelegate.window?.windowScene, let scene2 = out.object as? UIWindowScene, scene1 == scene2 {
@@ -110,6 +113,7 @@ struct LCTabView: View {
             }
         }
         .onOpenURL { url in
+            scStayInUI = true
             dispatchURL(url: url)
         }
     }
@@ -130,7 +134,7 @@ struct LCTabView: View {
             }
             
             switch host {
-            case "livecontainer-launch", "install", "open-web-page", "open-url":
+            case "livecontainer-launch", "install", "open-web-page", "open-url", "sc-webclip":
                 sharedModel.selectedTab = .apps
             case "certificate":
                 sharedModel.selectedTab = .settings
@@ -145,6 +149,33 @@ struct LCTabView: View {
         sharedModel.deepLink = url
     }
     
+    // SideStore shell: SideStore is the front end of this app.
+    // - SideStore can hand over a task (install, launch, Home Screen icon) through "SCPendingDeepLink".
+    // - "SCStayInUI" is set by SideStore's escape button to show LiveContainer's own interface once.
+    // - Otherwise, when the app was opened normally (no URL, no error to show), switch to SideStore.
+    func scHandleStartup() {
+        let defaults = UserDefaults.standard
+        if let pending = defaults.string(forKey: "SCPendingDeepLink") {
+            defaults.removeObject(forKey: "SCPendingDeepLink")
+            if let url = URL(string: pending) {
+                scStayInUI = true
+                dispatchURL(url: url)
+                return
+            }
+        }
+        if defaults.bool(forKey: "SCStayInUI") {
+            defaults.removeObject(forKey: "SCStayInUI")
+            scStayInUI = true
+            return
+        }
+        guard UserDefaults.sideStoreExist(), !defaults.bool(forKey: "SCDisableAutoSideStore") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard !scStayInUI, !crashReportShow, !errorShow,
+                  UIApplication.shared.applicationState == .active else { return }
+            LCUtils.openSideStore()
+        }
+    }
+
     func closeDuplicatedWindow() {
         if let session = sceneDelegate.window?.windowScene?.session, DataManager.shared.model.mainWindowOpened {
             UIApplication.shared.requestSceneSessionDestruction(session, options: nil) { e in

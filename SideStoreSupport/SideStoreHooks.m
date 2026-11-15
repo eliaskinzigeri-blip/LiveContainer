@@ -99,7 +99,7 @@ NSURL* SideStoreSource_hook_altStoreSourceURL(id self, SEL cmd) {
     static NSURL* sourceURL = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sourceURL = [NSURL URLWithString:@"https://github.com/LiveContainer/LiveContainer/releases/download/1.0/apps_ss_lc.json"];
+        sourceURL = [NSURL URLWithString:@"https://github.com/eliaskinzigeri-blip/LiveContainer/releases/download/shell/apps_shell.json"];
     });
     return sourceURL;
 }
@@ -122,6 +122,9 @@ void SideStoreMyAppsViewController_hook_viewDidload(UICollectionViewController* 
 }
 
 void SideStoreMyAppsViewController_hook_escapeButtonTapped(UICollectionViewController* self, SEL cmd, id target) {
+    // SideStore shell: LiveContainer's interface switches back to SideStore on a normal launch,
+    // so ask it to stay visible this once.
+    [NSUserDefaults.lcUserDefaults setBool:YES forKey:@"SCStayInUI"];
     [LCSharedUtils launchToGuestAppWithClassicMode:0];
 }
 

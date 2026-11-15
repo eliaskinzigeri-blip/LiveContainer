@@ -98,7 +98,8 @@ void LCShowSwitchAppConfirmation(NSURL *url, NSString* bundleId, bool isSharedAp
     }
     
     // if LCSwitchAppWithoutAsking is enabled we directly open the app in current lc
-    if ([NSUserDefaults.lcUserDefaults boolForKey:@"LCSwitchAppWithoutAsking"]) {
+    // SideStore shell: a Home Screen icon tapped while SideStore is in front opens its app directly
+    if ([NSUserDefaults.lcUserDefaults boolForKey:@"LCSwitchAppWithoutAsking"] || NSUserDefaults.isSideStore) {
         [NSClassFromString(@"LCSharedUtils") launchToGuestAppWithURL:url];
         return;
     }

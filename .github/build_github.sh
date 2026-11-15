@@ -1,5 +1,5 @@
 # copy lc
-wget https://github.com/LiveContainer/dylibify/releases/download/1.0/dylibify
+curl -fsSL -o dylibify https://github.com/LiveContainer/dylibify/releases/download/1.0/dylibify
 chmod +x dylibify
 brew install ldid
 
@@ -39,10 +39,17 @@ mv ./tmp/SideStoreSupport.framework Payload/LiveContainer.app/Frameworks
 /usr/libexec/PlistBuddy -c "Add :PreferenceSpecifiers:3:Key string LCOpenSideStore" ./Payload/LiveContainer.app/Settings.bundle/Root.plist
 /usr/libexec/PlistBuddy -c "Add :PreferenceSpecifiers:3:DefaultValue bool false" ./Payload/LiveContainer.app/Settings.bundle/Root.plist
 
-# download SideStore
+# SideStore shell: the app shows up as SideStore, and gets its own version so that the built-in
+# SideStore can offer each new build as an update (see .github/shell_source.py)
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName SideStore" ./Payload/LiveContainer.app/Info.plist
+if [ -n "$SHELL_VERSION" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHELL_VERSION" ./Payload/LiveContainer.app/Info.plist
+fi
+
+# download SideStore (this fork's build, with the container fallback)
 cd tmp
-wget https://github.com/LiveContainer/SideStore/releases/download/nightly/SideStore.ipa
-unzip SideStore.ipa
+curl -fsSL -o SideStore.ipa https://github.com/eliaskinzigeri-blip/SideStore/releases/download/nightly/SideStore.ipa || { echo "SideStore.ipa could not be downloaded"; exit 1; }
+unzip -q SideStore.ipa || exit 1
 cd ..
 
 # SideStore
@@ -67,8 +74,8 @@ mv ./Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/PlugIns/AltWidg
 mv ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/AltWidgetExtension ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/LiveWidgetExtension
 
 # Sign
-rm -r .zsign_cache
-find payloadlc/Payload -type d -name "_CodeSignature" -exec rm -r {} +
+rm -rf .zsign_cache
+find payloadlc/Payload -type d -name "_CodeSignature" -exec rm -r {} + 2>/dev/null || true
 
 ldid -S.github/sidelc/LiveWidgetExtension_adhoc.xml ./Payload/LiveContainer.app/PlugIns/LiveWidgetExtension.appex/LiveWidgetExtension
 

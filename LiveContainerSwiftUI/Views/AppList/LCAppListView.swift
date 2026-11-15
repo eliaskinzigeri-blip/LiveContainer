@@ -82,6 +82,8 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
     @AppStorage("darkModeIcon", store: LCUtils.appGroupUserDefault) private var darkModeIcon = false
     
     @State private var isViewAppeared = false
+    // SideStore shell: an install handed over by the built-in SideStore replaces the existing copy without asking
+    @State private var scAutoReplace = false
     
     @ObservedObject var searchContext: SearchContext = SearchContext()
     var sortedApps: [LCAppModel] {
@@ -659,13 +661,19 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         if fm.fileExists(atPath: outputFolder.path) || sameBundleIdApp.count > 0 {
             appRelativePath = "\(newAppInfo.bundleIdentifier()!)_\(Int(CFAbsoluteTimeGetCurrent())).app"
             
-            self.installOptions = [AppReplaceOption(isReplace: false, nameOfFolderToInstall: appRelativePath)]
+            var scOptions = [AppReplaceOption(isReplace: false, nameOfFolderToInstall: appRelativePath)]
             
             for app in sameBundleIdApp {
-                self.installOptions.append(AppReplaceOption(isReplace: true, nameOfFolderToInstall: app.appInfo.relativeBundlePath, appToReplace: app))
+                scOptions.append(AppReplaceOption(isReplace: true, nameOfFolderToInstall: app.appInfo.relativeBundlePath, appToReplace: app))
             }
+            self.installOptions = scOptions
 
-            guard let installOptionChosen = await installReplaceAlert.open() else {
+            // SideStore shell: updates coming from SideStore replace the installed copy (data is kept)
+            var scChosen: AppReplaceOption? = scAutoReplace ? scOptions.first(where: { $0.isReplace }) : nil
+            if scChosen == nil {
+                scChosen = await installReplaceAlert.open()
+            }
+            guard let installOptionChosen = scChosen else {
                 // user cancelled
                 self.installprogressVisible = false
                 try fm.removeItem(at: payloadPath)
@@ -1143,6 +1151,43 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
         isNavigationActive = true
     }
     
+    // SideStore shell: called once an install requested by the built-in SideStore has finished.
+    // On success the temporary ipa is removed and we go straight back to SideStore;
+    // on failure we stay here so the error alert remains visible.
+    func scFinishSideStoreInstall(urlStr: String) {
+        if errorShow {
+            UserDefaults.standard.set(errorInfo, forKey: "SCLastInstallError")
+            return
+        }
+        UserDefaults.standard.removeObject(forKey: "SCLastInstallError")
+        if let fileUrl = URL(string: urlStr), fileUrl.isFileURL {
+            try? FileManager.default.removeItem(at: fileUrl)
+        }
+        guard UserDefaults.sideStoreExist() else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            LCUtils.openSideStore(delegate: self)
+        }
+    }
+
+    // SideStore shell: "Add to Home Screen" requested from SideStore's My Apps
+    func scCreateWebClip(bundleName: String) async {
+        guard let app = sharedModel.apps.first(where: { $0.appInfo.relativeBundlePath == bundleName }) else {
+            errorInfo = "lc.appList.appNotFoundError".loc
+            errorShow = true
+            return
+        }
+        guard let style = await promptForGeneratedIconStyle() else {
+            return
+        }
+        guard let profile = app.appInfo.generateWebClipConfig(withContainerId: app.uiSelectedContainer?.folderName, iconStyle: style),
+              let data = try? PropertyListSerialization.data(fromPropertyList: profile, format: .xml, options: 0) else {
+            errorInfo = "Could not create the Home Screen icon."
+            errorShow = true
+            return
+        }
+        installMdm(data: data)
+    }
+
     func promptForGeneratedIconStyle() async -> GeneratedIconStyle? {
         if #available(iOS 18.0, *) {
             return await generatedIconStyleSelector.open()
@@ -1221,8 +1266,21 @@ struct LCAppListView : View, LCAppBannerDelegate, LCAppModelDelegate {
                     }
                 }
                 if let installUrl {
-                    Task { await installFromUrl(urlStr: installUrl) }
+                    let scReturn = components.queryItems?.contains(where: { $0.name == "sc-return" && $0.value == "1" }) ?? false
+                    Task {
+                        scAutoReplace = scReturn
+                        await installFromUrl(urlStr: installUrl)
+                        scAutoReplace = false
+                        if scReturn {
+                            scFinishSideStoreInstall(urlStr: installUrl)
+                        }
+                    }
                 }
+            }
+        } else if url.host == "sc-webclip" {
+            if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let bundleName = components.queryItems?.first(where: { $0.name == "bundle-name" })?.value {
+                Task { await scCreateWebClip(bundleName: bundleName) }
             }
         }
     }

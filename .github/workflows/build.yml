@@ -13,7 +13,9 @@ on:
 jobs:
   build:
     name: Build using xcodebuild command
-    runs-on: xcode-27
+    runs-on: macos-26
+    permissions:
+      contents: write
     env:
       scheme: LiveContainer
       archive_path: archive
@@ -23,9 +25,12 @@ jobs:
       artifact: ${{ env.scheme }}.ipa
       artifact2: ${{ env.scheme }}+SideStore.ipa
     steps:
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '27.2'
+      - name: Select Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          XC=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -v -i beta | sort -V | tail -n 1)
+          if [ -n "$XC" ]; then sudo xcode-select -s "$XC"; fi
+          xcodebuild -version
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -67,8 +72,10 @@ jobs:
           name: ${{ env.archive_path }}.xcarchive.tar
           path: ${{ env.archive_path }}.xcarchive.tar
       - name: Create IPA
+        env:
+          SHELL_VERSION: 3.8.${{ github.run_number }}00
         run: |
-          sh .github/build_github.sh
+          bash .github/build_github.sh
 
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v7
@@ -81,6 +88,21 @@ jobs:
         with:
           name: ${{ env.scheme }}+SideStore.ipa
           path: ${{ env.scheme }}+SideStore.ipa
+
+      # SideStore shell: publish the app and its SideStore source in the "shell" release
+      - name: Publish SideStore shell
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/claude/funny-knuth-1nnh6m'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHELL_VERSION: 3.8.${{ github.run_number }}00
+        run: |
+          cp "$scheme+SideStore.ipa" SideStore-Shell.ipa
+          python3 .github/shell_source.py SideStore-Shell.ipa > apps_shell.json
+          cat apps_shell.json
+          gh release delete shell --yes --cleanup-tag || true
+          gh release create shell SideStore-Shell.ipa apps_shell.json --target "$GITHUB_SHA" \
+            --title "SideStore shell" \
+            --notes "SideStore with the LiveContainer engine built in. Version $SHELL_VERSION (${GITHUB_SHA::7})."
 
   release__nightly:
     name: Nightly Release
