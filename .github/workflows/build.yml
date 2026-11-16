@@ -71,9 +71,43 @@ jobs:
         with:
           name: ${{ env.archive_path }}.xcarchive.tar
           path: ${{ env.archive_path }}.xcarchive.tar
+      # SideStore shell: SideStore is compiled here too (the SideStore repository stopped getting
+      # build machines), from the same branch of the SideStore fork.
+      - name: Checkout SideStore
+        if: github.event_name != 'pull_request'
+        uses: actions/checkout@v4
+        with:
+          repository: eliaskinzigeri-blip/SideStore
+          ref: claude/funny-knuth-1nnh6m
+          path: sidestore-src
+          submodules: recursive
+      - name: Build SideStore
+        if: github.event_name != 'pull_request'
+        working-directory: sidestore-src
+        run: |
+          set -o pipefail
+          brew list ldid >/dev/null 2>&1 || brew install ldid
+          brew list xcbeautify >/dev/null 2>&1 || brew install xcbeautify
+          ARTIFACTS_DIR="$HOME/Library/Caches/org.swift.swiftpm/artifacts"
+          mkdir -p "$ARTIFACTS_DIR"
+          curl -fsSL "https://github.com/krzyzanowskim/OpenSSL/releases/download/3.6.2000/OpenSSL.xcframework.zip" \
+            -o "$ARTIFACTS_DIR/https___github_com_krzyzanowskim_OpenSSL_releases_download_3_6_2000_OpenSSL_xcframework_zip"
+          curl -fsSL "https://github.com/mahee96/unicorn/releases/download/2.1.4-multiarch/Unicorn.xcframework.zip" \
+            -o "$ARTIFACTS_DIR/https___github_com_mahee96_unicorn_releases_download_2_1_4_multiarch_Unicorn_xcframework_zip"
+          mkdir -p build/logs
+          rm -rf AltStore/Resources/Icons.xcassets/Modern/*
+          NSUnbufferedIO=YES make -B build 2>&1 | tee build/logs/build.log | xcbeautify --renderer github-actions
+          make fakesign
+          make ipa
+          ls -l SideStore.ipa
+      - name: SideStore build errors
+        if: failure()
+        run: |
+          grep -n -E "error:|BUILD FAILED|The following build commands failed" -A3 sidestore-src/build/logs/build.log | head -n 200 || true
       - name: Create IPA
         env:
           SHELL_VERSION: 3.8.${{ github.run_number }}00
+          SIDESTORE_IPA: ${{ github.workspace }}/sidestore-src/SideStore.ipa
         run: |
           bash .github/build_github.sh
 

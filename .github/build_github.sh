@@ -48,7 +48,12 @@ fi
 
 # download SideStore (this fork's build, with the container fallback)
 cd tmp
-curl -fsSL -o SideStore.ipa https://github.com/eliaskinzigeri-blip/SideStore/releases/download/nightly/SideStore.ipa || { echo "SideStore.ipa could not be downloaded"; exit 1; }
+if [ -n "$SIDESTORE_IPA" ] && [ -f "$SIDESTORE_IPA" ]; then
+  echo "Using SideStore built in this workflow: $SIDESTORE_IPA"
+  cp "$SIDESTORE_IPA" SideStore.ipa
+else
+  curl -fsSL -o SideStore.ipa https://github.com/eliaskinzigeri-blip/SideStore/releases/download/nightly/SideStore.ipa || { echo "SideStore.ipa could not be downloaded"; exit 1; }
+fi
 unzip -q SideStore.ipa || exit 1
 cd ..
 
