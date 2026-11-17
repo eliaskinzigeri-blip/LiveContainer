@@ -99,7 +99,7 @@ NSURL* SideStoreSource_hook_altStoreSourceURL(id self, SEL cmd) {
     static NSURL* sourceURL = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sourceURL = [NSURL URLWithString:@"https://github.com/eliaskinzigeri-blip/LiveContainer/releases/download/shell/apps_shell.json"];
+        sourceURL = [NSURL URLWithString:@"https://github.com/eliaskinzigeri-blip/sidestore-shell/releases/download/shell/apps_shell.json"];
     });
     return sourceURL;
 }
