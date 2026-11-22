@@ -211,7 +211,7 @@ struct LCTweakFolderView : View {
                 renameFileInput.close(result: "")
             }
         )
-        .betterFileImporter(isPresented: $choosingTweak, types: [.dylib, .lcFramework, /*.deb*/], multiple: true, callback: { fileUrls in
+        .betterFileImporter(isPresented: $choosingTweak, types: [.dylib, .lcFramework, .deb], multiple: true, callback: { fileUrls in
             Task { await startInstallTweak(fileUrls) }
         }, onDismiss: {
             choosingTweak = false
@@ -372,6 +372,20 @@ struct LCTweakFolderView : View {
                 // handle deb file
                 if(!fileUrl.isFileURL) {
                     throw "lc.tweakView.notFileError %@".localizeWithFormat(fileUrl.lastPathComponent)
+                }
+                // SideStore shell: a .deb is unpacked, its tweak libraries are added
+                if fileUrl.pathExtension.lowercased() == "deb" {
+                    let isSecured = fileUrl.startAccessingSecurityScopedResource()
+                    defer { if isSecured { fileUrl.stopAccessingSecurityScopedResource() } }
+                    for extracted in try DebTweakImporter.importDeb(fileUrl, into: self.baseUrl) {
+                        LCParseMachO((extracted.path as NSString).utf8String, false) { path, header, _, _ in
+                            LCPatchAddRPath(path, header);
+                        }
+                        self.tweakItems.removeAll { $0.fileUrl == extracted }
+                        self.tweakItems.append(LCTweakItem(fileUrl: extracted, isFolder: false, isFramework: false, isTweak: true, isEnabled: true))
+                    }
+                    try? fm.removeItem(at: fileUrl)
+                    continue
                 }
                 let toPath = self.baseUrl.appendingPathComponent(fileUrl.lastPathComponent)
                 try fm.moveItem(at: fileUrl, to: toPath)
