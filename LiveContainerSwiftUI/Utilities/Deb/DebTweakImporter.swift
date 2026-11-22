@@ -27,14 +27,7 @@ enum DebTweakImporter
         var written: [URL] = []
         var needsShortSubstrate = false
         
-        let package = try DebExtractor.extractPackage(from: debURL)
-        for (name, data) in package.tweaks {
-            let destination = folderURL.appendingPathComponent(name)
-            if fileManager.fileExists(atPath: destination.path) {
-                try fileManager.removeItem(at: destination)
-            }
-            try data.write(to: destination, options: .atomic)
-            
+        func fixDependencies(of destination: URL) throws {
             try MachOInjector.rewriteDependencies(of: destination) { path in
                 if isSubstrate(path) {
                     let full = "@rpath/CydiaSubstrate.framework/CydiaSubstrate"
@@ -43,16 +36,36 @@ enum DebTweakImporter
                     needsShortSubstrate = true
                     return ("@loader_path/libsubstrate.dylib", false)
                 }
+                if let rpathPath = DebExtractor.jailbreakFrameworkRPath(path) {
+                    // a framework a jailbreak installs (e.g. Orion): use the copy imported from its .deb, if any
+                    return (rpathPath, true)
+                }
                 if isJailbreakPath(path) {
                     return (nil, true)
                 }
                 return (nil, false)
             }
+        }
+        
+        let package = try DebExtractor.extractPackage(from: debURL)
+        for (name, data) in package.tweaks {
+            let destination = folderURL.appendingPathComponent(name)
+            if fileManager.fileExists(atPath: destination.path) {
+                try fileManager.removeItem(at: destination)
+            }
+            try data.write(to: destination, options: .atomic)
+            try fixDependencies(of: destination)
             written.append(destination)
         }
         
-        // frameworks the tweak needs (e.g. SwiftProtobuf.framework), found through its @loader_path rpath
-        written += try DebExtractor.writeFrameworkFiles(package.frameworkFiles, into: folderURL)
+        // frameworks the tweak needs (e.g. SwiftProtobuf.framework, or Orion from its runtime package),
+        // found through the tweak's @loader_path rpath
+        let frameworks = try DebExtractor.writeFrameworkFiles(package.frameworkFiles, into: folderURL)
+        for binary in DebExtractor.frameworkBinaries(frameworks) {
+            try? fixDependencies(of: binary)
+            try? MachOInjector.addRPath("@loader_path/..", to: binary)
+        }
+        written += frameworks
         
         if needsShortSubstrate {
             // rare: the tweak's CydiaSubstrate path is too short to point at LiveContainer's framework
