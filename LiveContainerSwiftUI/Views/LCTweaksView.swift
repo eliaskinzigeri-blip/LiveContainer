@@ -378,11 +378,14 @@ struct LCTweakFolderView : View {
                     let isSecured = fileUrl.startAccessingSecurityScopedResource()
                     defer { if isSecured { fileUrl.stopAccessingSecurityScopedResource() } }
                     for extracted in try DebTweakImporter.importDeb(fileUrl, into: self.baseUrl) {
-                        LCParseMachO((extracted.path as NSString).utf8String, false) { path, header, _, _ in
-                            LCPatchAddRPath(path, header);
+                        let isFramework = extracted.pathExtension == "framework"
+                        if !isFramework {
+                            LCParseMachO((extracted.path as NSString).utf8String, false) { path, header, _, _ in
+                                LCPatchAddRPath(path, header);
+                            }
                         }
                         self.tweakItems.removeAll { $0.fileUrl == extracted }
-                        self.tweakItems.append(LCTweakItem(fileUrl: extracted, isFolder: false, isFramework: false, isTweak: true, isEnabled: true))
+                        self.tweakItems.append(LCTweakItem(fileUrl: extracted, isFolder: false, isFramework: isFramework, isTweak: !isFramework, isEnabled: true))
                     }
                     try? fm.removeItem(at: fileUrl)
                     continue

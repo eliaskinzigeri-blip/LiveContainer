@@ -27,7 +27,8 @@ enum DebTweakImporter
         var written: [URL] = []
         var needsShortSubstrate = false
         
-        for (name, data) in try DebExtractor.extractTweaks(from: debURL) {
+        let package = try DebExtractor.extractPackage(from: debURL)
+        for (name, data) in package.tweaks {
             let destination = folderURL.appendingPathComponent(name)
             if fileManager.fileExists(atPath: destination.path) {
                 try fileManager.removeItem(at: destination)
@@ -49,6 +50,9 @@ enum DebTweakImporter
             }
             written.append(destination)
         }
+        
+        // frameworks the tweak needs (e.g. SwiftProtobuf.framework), found through its @loader_path rpath
+        written += try DebExtractor.writeFrameworkFiles(package.frameworkFiles, into: folderURL)
         
         if needsShortSubstrate {
             // rare: the tweak's CydiaSubstrate path is too short to point at LiveContainer's framework
